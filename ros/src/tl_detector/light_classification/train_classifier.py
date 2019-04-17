@@ -1,6 +1,6 @@
 # disable GPU for parallel execution
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+#import os
+#os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 
 # Import libraries
@@ -34,10 +34,10 @@ data_dir = "../../../../../train/" # The directory of the training data
 
 # Hyperparameters
 dropout = 0.35
-batch_size = 12
-epochs = 64
-learning_rate = 0.0003
-learning_rate_decay = 0.035
+batch_size = 16
+epochs = 128
+learning_rate = 0.00035
+learning_rate_decay = 0.025
 
 class Classifier:
 
@@ -87,7 +87,7 @@ class Classifier:
                 image = cv2.imread(image).astype(np.float32)
 
 
-                image = cv2.resize(image, dsize=(300, 400), interpolation=cv2.INTER_CUBIC)
+                image = cv2.resize(image, dsize=(150, 200), interpolation=cv2.INTER_CUBIC)
                 
                 features.append(np.array(image).astype(np.float32))
                 targets.append(label)
@@ -110,11 +110,11 @@ class Classifier:
 
     # Defines the model and returns it. Takes the parameter "dropout", which defaults to 0.25 .
     def define_model(self, dropout = 0.25):
-        inp = Input(shape = (400, 300, 3))
+        inp = Input(shape = (200, 150, 3))
         normal = Lambda(lambda x: (x / 256.) - 0.5)(inp)
     
     
-        x = Conv2D(16, 6, activation = "relu", padding = "same")(normal)
+        x = Conv2D(32, 6, activation = "relu", padding = "same")(normal)
         x = MaxPooling2D(pool_size=(1, 2))(x)
         x = Dropout(dropout)(x)
         
