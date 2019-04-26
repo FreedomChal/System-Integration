@@ -22,6 +22,8 @@ from tensorflow.keras.models import Model, Sequential
 from tensorflow.keras.layers import Conv2D
 from tensorflow.keras.layers import MaxPooling2D
 from tensorflow.keras.layers import concatenate as Concat
+from tensorflow.keras.layers import GaussianNoise
+from tensorflow.keras.layers import GaussianDropout
 
 
 # Other imports
@@ -35,21 +37,25 @@ data_dir = "../../../../../train/" # The directory of the training data
 # Hyperparameters
 dropout = 0.35
 batch_size = 16
-epochs = 128
-learning_rate = 0.00035
-learning_rate_decay = 0.025
+epochs = 256
+learning_rate = 0.0005
+learning_rate_decay = 0.03
+image_noise = 0.05
 
+
+# The class used to store, train, and run the classifier
 class Classifier:
 
     # Initializes the class "Classifier", setting all the necessary variables.
-    def __init__(self, dropout = 0.25, batch_size = 32, epochs = 16, learning_rate = 0.001, learning_rate_decay = 0.01):
+    def __init__(self, dropout = 0.25, batch_size = 32, epochs = 16, learning_rate = 0.001, learning_rate_decay = 0.01, image_noise = 0):
         self.dropout = dropout
         self.batch_size = batch_size
         self.epochs = epochs
         self.learning_rate = learning_rate
         self.learning_rate_decay = learning_rate_decay
+        self.image_noise = image_noise
 
-        self.model = self.define_model(dropout)
+        self.model = self.define_model(dropout, image_noise)
 
     # Loads the image and label data.
     def load_data(self):
@@ -84,14 +90,14 @@ class Classifier:
             _ = random.shuffle(samples)
             for line in samples:
                 image, label = line
-                image = cv2.imread(image).astype(np.float32)
+                image_actual = cv2.imread(image).astype(np.float32)
 
 
-                image = cv2.resize(image, dsize=(150, 200), interpolation=cv2.INTER_CUBIC)
+                image_actual = cv2.resize(image_actual, dsize=(300, 400), interpolation=cv2.INTER_CUBIC)
                 
-                features.append(np.array(image).astype(np.float32))
+                features.append(np.array(image_actual).astype(np.float32))
                 targets.append(label)
-                flipped_image = cv2.flip(image.astype(np.float32), 1)
+                flipped_image = cv2.flip(image_actual.astype(np.float32), 1)
                 features.append(np.array(flipped_image).astype(np.float32))
                 targets.append(label)
                 
@@ -103,31 +109,64 @@ class Classifier:
 
         return None
 
+    def get_all_images(self, samples):
+        features = []
+        targets = []
+        locations = []
+
+        _ = features.clear()
+        _ = targets.clear()
+        _ = locations.clear()
+        for line in samples:
+            image, label = line
+            image_actual = cv2.imread(image).astype(np.float32)
+
+
+            image_actual = cv2.resize(image_actual, dsize=(300, 400), interpolation=cv2.INTER_CUBIC)
+
+            features.append(np.array(image_actual).astype(np.float32))
+            targets.append(label)
+            flipped_image = cv2.flip(image_actual.astype(np.float32), 1)
+            features.append(np.array(flipped_image).astype(np.float32))
+            targets.append(label)
+
+            locations.append(image)
+            locations.append(image)
+
+        output = (np.array(features), np.array(targets), locations)
+        return output
+
+
+
     #def get_images(self, samples, generator, batch_size = 32):
         #generated_data = generator.flow(samples, batch_size = batch_size)
         #return generated_data
 
 
     # Defines the model and returns it. Takes the parameter "dropout", which defaults to 0.25 .
-    def define_model(self, dropout = 0.25):
-        inp = Input(shape = (200, 150, 3))
+    def define_model(self, dropout = 0.25, image_noise = 0):
+        inp = Input(shape = (400, 300, 3))
         normal = Lambda(lambda x: (x / 256.) - 0.5)(inp)
+        
+        x = GaussianNoise(image_noise)(normal) # Add Gaussian Noise as a data augmentation
     
-    
-        x = Conv2D(32, 6, activation = "relu", padding = "same")(normal)
+        x = Conv2D(16, 1, activation = "relu", padding = "same", strides = 1)(x)
+        x = Dropout(dropout)(x)
+        
+        x = Conv2D(64, 2, activation = "relu", padding = "same", strides = 4)(x)
         x = MaxPooling2D(pool_size=(1, 2))(x)
         x = Dropout(dropout)(x)
         
-        x = Conv2D(64, 5, activation = "relu", padding = "same")(x)
+        x = Conv2D(128, 4, activation = "relu", padding = "same", strides = 2)(x)
         x = Dropout(dropout)(x)
         
-        x = Conv2D(32, 4, activation = "relu", padding = "same")(x)
+        x = Conv2D(256, 2, activation = "relu", padding = "same", strides = 2)(x)
         x = MaxPooling2D(pool_size = (1, 2))(x)
         x = Dropout(dropout)(x)
         
         x = Flatten()(x)
         
-        x = Dense(32, activation = "relu")(x)
+        x = Dense(256, activation = "relu")(x)
         x = Dropout(dropout)(x)
         
         x = Dense(4, activation = "softmax")(x)
@@ -174,7 +213,26 @@ class Classifier:
         test_loss = self.model.evaluate(np.array(test_x), np.array(test_y))[0]
         print("Test loss: {}".format(test_loss))
         
+        all_images = self.get_all_images(training_data)
+        for i in range(len(all_images[2])):
+            image = np.array([all_images[0][i]])
+            prediction = np.argmax(self.model.predict(image))
+            truth = np.argmax(all_images[1][i])
+            if prediction == truth:
+                continue
+            else:
+                choices = ["None", "Green", "Yellow", "Red"]
+                image_location = all_images[2][i]
+                print(image_location, "Is", choices[truth], ", but was predicted as", choices[prediction])
+                continue
+
         _ = self.model.save('model.h5')
+
+    # Predicts the class of a given image
+    def predict_class(self, image):
+        choices = ["None", "Green", "Yellow", "Red"]
+        prediction = np.argmax(self.model.predict(image))
+        return choices[prediction]
 
 
 
